@@ -1,0 +1,573 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Investment Assistant Study</title>
+<style>
+:root{--blue:#2e5f8f;--lightblue:#eaf1f8;--green:#3a7d44;--amber:#b7791f;--red:#b03a3a;--grey:#f4f4f4;--border:#d0d7de;--text:#24292f}
+*{box-sizing:border-box}
+body{font-family:"Segoe UI",Arial,sans-serif;color:var(--text);background:#fafbfc;margin:0;line-height:1.55}
+.wrap{max-width:860px;margin:0 auto;padding:24px 20px 80px}
+.card{background:#fff;border:1px solid var(--border);border-radius:8px;padding:26px 30px;margin:18px 0;box-shadow:0 1px 3px rgba(0,0,0,.05)}
+h1{font-size:1.5em;color:var(--blue);margin:.2em 0 .5em}
+h2{font-size:1.2em;color:var(--blue);margin:.3em 0 .6em}
+h3{font-size:1.02em;margin:.8em 0 .35em}
+.small{font-size:.88em;color:#57606a}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:6px;padding:11px 26px;font-size:1em;cursor:pointer;margin-top:14px}
+.btn:hover{filter:brightness(1.1)}
+.btn:disabled{background:#9db3c8;cursor:not-allowed}
+.btn.secondary{background:#6b7280}
+.progress{height:8px;background:#e5e9ee;border-radius:4px;margin-bottom:6px;overflow:hidden}
+.progress>div{height:100%;background:var(--blue);width:0%;transition:width .4s}
+.likert{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0 4px}
+.likert label{flex:1;min-width:52px;text-align:center;border:1px solid var(--border);border-radius:6px;padding:8px 2px;cursor:pointer;background:#fff;font-size:.85em}
+.likert input{display:block;margin:0 auto 4px}
+.likert label.sel{background:var(--lightblue);border-color:var(--blue)}
+.q{margin:16px 0;padding:14px 16px;background:var(--grey);border-radius:6px}
+.q p.stem{margin:0 0 8px;font-weight:600}
+.opt{display:block;margin:6px 0;padding:8px 12px;border:1px solid var(--border);border-radius:6px;background:#fff;cursor:pointer}
+.opt.sel{background:var(--lightblue);border-color:var(--blue)}
+.opt input{margin-right:9px}
+.aicard{border:1.5px solid var(--blue);border-radius:8px;padding:18px 20px;background:var(--lightblue);margin:14px 0}
+.aicard .aihdr{font-weight:700;color:var(--blue);margin-bottom:6px}
+.conf{display:inline-block;padding:3px 12px;border-radius:14px;font-weight:600;font-size:.9em;margin-bottom:8px}
+.conf.high{background:#dcefdc;color:var(--green)}
+.conf.medlow{background:#fbeeda;color:var(--amber)}
+.counterfactual{background:#fff;border-left:4px solid var(--amber);padding:10px 14px;margin:10px 0;font-size:.95em}
+.friction{background:#fff8ef;border:1px solid var(--amber);border-radius:6px;padding:12px 16px;margin:12px 0}
+textarea{width:100%;min-height:70px;border:1px solid var(--border);border-radius:6px;padding:9px;font-family:inherit;font-size:.95em}
+.sliderrow{display:grid;grid-template-columns:230px 1fr 74px;gap:12px;align-items:center;margin:9px 0}
+.sliderrow input[type=range]{width:100%}
+.sliderrow .val{text-align:right;font-weight:600}
+.total{font-weight:700;margin:10px 0;padding:9px 14px;border-radius:6px}
+.total.ok{background:#dcefdc;color:var(--green)}
+.total.bad{background:#f8dede;color:var(--red)}
+.profilebox{background:var(--grey);border-radius:6px;padding:14px 18px;margin:10px 0}
+.bars{margin:10px 0}
+.bar{display:grid;grid-template-columns:230px 1fr 52px;gap:10px;align-items:center;font-size:.88em;margin:4px 0}
+.bar .trk{background:#e5e9ee;border-radius:3px;height:14px}
+.bar .fill{background:var(--blue);height:100%;border-radius:3px}
+.warn{color:var(--red);font-size:.9em;margin-top:6px;display:none}
+.badge{display:inline-block;background:#eef;border-radius:4px;padding:2px 10px;font-size:.8em;color:var(--blue);margin-bottom:8px}
+.footer-note{font-size:.82em;color:#6e7781;margin-top:26px;border-top:1px solid var(--border);padding-top:10px}
+code.cc{background:#eef;padding:3px 10px;border-radius:4px;font-size:1.15em;letter-spacing:1px}
+#blocker{display:none;position:fixed;inset:0;background:#fff;z-index:99;padding:60px 24px;text-align:center}
+</style>
+</head>
+<body>
+<div id="blocker"><h1>Desktop or laptop required</h1><p>This study requires a desktop or laptop computer with a keyboard and mouse or trackpad. Please return the study on Prolific and take part from a desktop device if you wish.</p></div>
+<div class="wrap">
+  <div class="progress"><div id="pbar"></div></div>
+  <div class="small" id="pstep"></div>
+  <div id="screen"></div>
+  <div class="footer-note">This is an academic research study. It is not financial advice. All scenarios and AI recommendations are simulated. · Trust Calibration in AI Investment Assistants · National Taiwan University</div>
+</div>
+<script>
+"use strict";
+/* ================= CONFIG — EDIT BEFORE DEPLOYMENT ================= */
+const CONFIG = {
+  DATAPIPE_EXPERIMENT_ID: "PASTE_DATAPIPE_EXPERIMENT_ID_HERE",
+  PROLIFIC_COMPLETION_CODE: "PASTE_COMPLETION_CODE",
+  PROLIFIC_RETURN_URL: "https://app.prolific.com/submissions/complete?cc=",
+  RESEARCHER_EMAIL: "austinydes@gmail.com",
+  MIN_FRICTION_WORDS: 10,
+  VERSION: "3arm-n100-6cases-v1.0"
+};
+/* =================================================================== */
+const qs = new URLSearchParams(location.search);
+const DEMO = qs.get("demo")==="1";
+const ARM_OVERRIDE = (qs.get("arm")||"").toUpperCase();
+const PID = qs.get("PROLIFIC_PID") || ("test_"+Math.random().toString(36).slice(2,10));
+const STUDY_ID = qs.get("STUDY_ID")||""; const SESSION_ID = qs.get("SESSION_ID")||"";
+
+const ASSETS = [
+  {key:"global",  label:"Global equity index"},
+  {key:"intl_em", label:"International / emerging-market equity"},
+  {key:"sector",  label:"Sector or small-cap equity"},
+  {key:"bonds",   label:"Bonds / cash"},
+  {key:"crypto",  label:"Crypto / alternative assets"}
+];
+
+const SCENARIOS = [
+ {id:"S1", regime:"drawdown", quality:1,
+  profile:"Alex is 29 years old, has a 25-year investment horizon, stable income, no near-term withdrawal need, and medium-high risk tolerance.",
+  context:"The broad equity market has fallen sharply over the past year. Volatility remains elevated, but valuations are lower than a year ago. Alex wants to invest a hypothetical $10,000 retirement contribution.",
+  aiText:"65% global equity index, 15% international equity, 10% emerging-market equity, 10% investment-grade bonds",
+  rationale:"This allocation keeps broad growth exposure while maintaining some diversification and a small stabilizing bond position.",
+  conf:{label:"High", pct:82, cls:"high"},
+  counter:"If Alex needed the money within three years or had low risk tolerance, the allocation would shift meaningfully toward short-term bonds and cash.",
+  alloc:{global:65,intl_em:25,sector:0,bonds:10,crypto:0}},
+ {id:"S2", regime:"drawdown", quality:0,
+  profile:"Morgan is 63 years old, plans to retire within three years, expects to draw from the portfolio soon, and has low risk tolerance.",
+  context:"Technology stocks and crypto-related assets have dropped sharply. Online discussions describe the decline as a rare buying opportunity.",
+  aiText:"45% sector technology fund, 25% crypto-related fund, 20% emerging-market equity, 10% short-term bonds",
+  rationale:"This allocation seeks to capture a rebound in beaten-down growth assets after the drawdown.",
+  conf:{label:"Medium-low", pct:56, cls:"medlow"},
+  counter:"If Morgan were 30 years old with no withdrawal need and high risk tolerance, a higher growth allocation could be more defensible, though concentration would still need review.",
+  alloc:{global:0,intl_em:20,sector:45,bonds:10,crypto:25}},
+ {id:"S3", regime:"recovery", quality:1,
+  profile:"Jamie is 34 years old, has a 20-year horizon, moderate savings outside the portfolio, and medium-high risk tolerance.",
+  context:"Markets have begun recovering after a recessionary period. Earnings expectations are improving, but rates remain uncertain.",
+  aiText:"60% global equity index, 20% international equity, 10% small-cap equity, 10% investment-grade bonds",
+  rationale:"This allocation participates in recovery while avoiding a single-sector or single-country concentration.",
+  conf:{label:"High", pct:82, cls:"high"},
+  counter:"If Jamie had a short horizon or low risk tolerance, the recommendation would reduce equity exposure and increase bonds or cash.",
+  alloc:{global:60,intl_em:20,sector:10,bonds:10,crypto:0}},
+ {id:"S4", regime:"recovery", quality:0,
+  profile:"Riley is 46 years old, has an 8-year horizon for part of the funds, and reports moderate risk tolerance.",
+  context:"Small-cap technology and emerging markets have recently outperformed after several strong months. Financial media coverage is highly optimistic.",
+  aiText:"40% small-cap technology fund, 30% emerging-market equity, 20% crypto-related fund, 10% cash",
+  rationale:"This allocation emphasizes areas with the strongest recent momentum and potential upside during the recovery.",
+  conf:{label:"Medium-low", pct:56, cls:"medlow"},
+  counter:"If Riley had very high risk tolerance, a longer horizon, and other secure assets, a limited tilt toward growth assets could be considered, but this level of concentration would remain difficult to justify.",
+  alloc:{global:0,intl_em:30,sector:40,bonds:10,crypto:20}},
+ {id:"S5", regime:"goal_constrained", quality:1,
+  profile:"Taylor is 60 years old, plans to retire in five years, wants lower volatility, and prefers income and capital preservation over aggressive growth.",
+  context:"Inflation has moderated but interest rates remain uncertain. Taylor wants a hypothetical $10,000 allocation that can support retirement stability.",
+  aiText:"45% investment-grade bonds, 20% short-term Treasury/cash, 20% global equity index, 15% dividend equity fund",
+  rationale:"This allocation prioritizes stability and income while retaining limited equity exposure for inflation protection and long-term purchasing power.",
+  conf:{label:"High", pct:82, cls:"high"},
+  counter:"If Taylor had a 25-year horizon and high risk tolerance, the allocation would move toward a higher equity share and lower cash allocation.",
+  alloc:{global:35,intl_em:0,sector:0,bonds:65,crypto:0}},
+ {id:"S6", regime:"goal_constrained", quality:0,
+  profile:"Casey is 27 years old, has a 30-year horizon, stable income, no near-term withdrawal need, and medium-high risk tolerance.",
+  context:"Market headlines are mixed, with some commentators warning about recession risk and others expecting long-term growth.",
+  aiText:"70% short-term Treasury/cash, 20% investment-grade bonds, 10% global equity index",
+  rationale:"This allocation emphasizes safety and avoids short-term market volatility.",
+  conf:{label:"Medium-low", pct:56, cls:"medlow"},
+  counter:"If Casey needed the money within one to two years or had very low risk tolerance, this conservative allocation could be more defensible.",
+  alloc:{global:10,intl_em:0,sector:0,bonds:90,crypto:0}}
+];
+
+/* ---------- state ---------- */
+const D = {  // participant-level data
+  participant_id:PID, study_id:STUDY_ID, session_id:SESSION_ID, version:CONFIG.VERSION,
+  started_utc:new Date().toISOString(), condition:"", scenario_order:"", consent:0,
+  screen_w:screen.width, screen_h:screen.height, user_agent:navigator.userAgent.slice(0,140)
+};
+const TRIALS = [];   // per-scenario records
+let order = [];      // shuffled scenario indices
+let tIdx = 0;        // current trial
+let t0 = 0;          // timers
+function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
+function el(id){return document.getElementById(id);}
+function screenHTML(h){el("screen").innerHTML=h;window.scrollTo(0,0);}
+function setProg(step,total,label){el("pbar").style.width=(100*step/total)+"%";el("pstep").textContent=label||"";}
+const STEPS_TOTAL = 13;
+</script>
+<script>
+"use strict";
+/* ---------- generic widgets ---------- */
+function likert(name, lo, hi, loLab, hiLab){
+  let h='<div class="likert" data-name="'+name+'">';
+  for(let v=lo;v<=hi;v++){
+    h+='<label><input type="radio" name="'+name+'" value="'+v+'">'+v+
+       (v===lo?'<div class="small">'+loLab+'</div>':v===hi?'<div class="small">'+hiLab+'</div>':'')+'</label>';
+  }
+  return h+'</div>';
+}
+function radioQ(name, stem, opts){
+  let h='<div class="q" data-q="'+name+'"><p class="stem">'+stem+'</p>';
+  opts.forEach(function(o,i){h+='<label class="opt"><input type="radio" name="'+name+'" value="'+(o.v!==undefined?o.v:i)+'">'+o.t+'</label>';});
+  return h+'</div>';
+}
+document.addEventListener("change",function(e){
+  if(e.target.type==="radio"){
+    document.querySelectorAll('input[name="'+e.target.name+'"]').forEach(function(r){
+      r.closest("label").classList.toggle("sel", r.checked);
+    });
+  }
+});
+function getRadio(name){const r=document.querySelector('input[name="'+name+'"]:checked');return r?r.value:null;}
+function requireAll(names){
+  const missing = names.filter(function(n){return getRadio(n)===null;});
+  if(missing.length){ alert("Please answer every question before continuing. ("+missing.length+" unanswered)"); return false;}
+  return true;
+}
+function sliderBlock(prefix, init){
+  let h='<div id="'+prefix+'_sliders">';
+  ASSETS.forEach(function(a){
+    const v = init && init[a.key]!==undefined ? init[a.key] : 0;
+    h+='<div class="sliderrow"><div>'+a.label+'</div>'+
+       '<input type="range" min="0" max="100" step="5" value="'+v+'" id="'+prefix+'_'+a.key+'" oninput="updTotal(\''+prefix+'\')">'+
+       '<div class="val" id="'+prefix+'_'+a.key+'_v">'+v+'%</div></div>';
+  });
+  h+='<div class="total" id="'+prefix+'_total"></div></div>';
+  return h;
+}
+function updTotal(prefix){
+  let sum=0;
+  ASSETS.forEach(function(a){
+    const s=el(prefix+"_"+a.key); const v=parseInt(s.value,10);
+    el(prefix+"_"+a.key+"_v").textContent=v+"%"; sum+=v;
+  });
+  const t=el(prefix+"_total");
+  t.textContent="Total: "+sum+"%"+(sum===100?" ✓":"  (must equal 100%)");
+  t.className="total "+(sum===100?"ok":"bad");
+  return sum;
+}
+function readAlloc(prefix){
+  const o={}; let sum=0;
+  ASSETS.forEach(function(a){o[a.key]=parseInt(el(prefix+"_"+a.key).value,10); sum+=o[a.key];});
+  return sum===100?o:null;
+}
+function allocBars(alloc){
+  let h='<div class="bars">';
+  ASSETS.forEach(function(a){
+    const v=alloc[a.key]||0;
+    h+='<div class="bar"><div>'+a.label+'</div><div class="trk"><div class="fill" style="width:'+v+'%"></div></div><div>'+v+'%</div></div>';
+  });
+  return h+'</div>';
+}
+
+/* ---------- 1. Welcome + consent ---------- */
+function sConsent(){
+  setProg(1,STEPS_TOTAL,"Consent");
+  screenHTML('<div class="card">'+(DEMO?'<span class="badge">DEMO MODE</span>':'')+
+  '<h1>Trust Calibration in AI Investment Assistants</h1>'+
+  '<p>You are invited to participate in a research study about how people evaluate AI-generated investment recommendations. The study is part of a master’s thesis in finance. You will review hypothetical investment cases; no real money is involved.</p>'+
+  '<h3>What you will do</h3><p>You will answer screening and background questions, complete a short tutorial, review six hypothetical investment cases, view AI-generated recommendations, and choose whether to accept or reject them. Short questionnaires follow the cases.</p>'+
+  '<h3>Time</h3><p>The study is expected to take approximately 20–30 minutes.</p>'+
+  '<h3>Risks and benefits</h3><p>The study involves no real investment and no real money. Some scenarios describe financial uncertainty or risk, but all decisions are hypothetical. You may not receive direct personal benefit; the study may help researchers understand how AI investment interfaces can be designed more safely.</p>'+
+  '<h3>Important</h3><p><strong>This study does not provide financial advice.</strong> The AI assistant is a research prototype. Do not use any scenario or recommendation from this study to make real investment decisions.</p>'+
+  '<h3>Data and privacy</h3><p>Your responses are stored in de-identified form. We will not ask for account balances, brokerage information, real portfolio holdings, or personally identifying financial details.</p>'+
+  '<h3>Voluntary participation</h3><p>Participation is voluntary. You may stop at any time before submitting your responses. Compensation follows the platform’s payment rules and the study approval policy.</p>'+
+  '<p><strong>Consent:</strong> By clicking “I agree”, you confirm that you are at least 18 years old, have read the information above, understand that the task is hypothetical and not financial advice, and agree to participate.</p>'+
+  '<button class="btn" onclick="D.consent=1;sEligibility()">I agree — begin</button> '+
+  '<button class="btn secondary" onclick="sNoConsent()">I do not wish to participate</button></div>');
+}
+function sNoConsent(){
+  screenHTML('<div class="card"><h2>No problem</h2><p>You have chosen not to participate. Please return your submission on Prolific so your place is freed for another participant. You may now close this window.</p></div>');
+}
+
+/* ---------- 2. Eligibility ---------- */
+function sEligibility(){
+  setProg(2,STEPS_TOTAL,"Eligibility");
+  screenHTML('<div class="card"><h2>Eligibility questions</h2>'+
+  radioQ("elig_invest","Have you ever personally held or contributed to an investment account, retirement account, mutual fund, ETF, stock, bond, or crypto asset?",[{t:"Yes",v:"yes"},{t:"No",v:"no"},{t:"Prefer not to say",v:"pnts"}])+
+  radioQ("elig_exp","Which best describes your investment experience?",[{t:"No experience",v:"none"},{t:"Basic exposure only",v:"basic"},{t:"Occasional personal investor",v:"occasional"},{t:"Frequent personal investor",v:"frequent"},{t:"Professional finance role",v:"professional"}])+
+  radioQ("elig_prof","Do you currently or did you previously work as a financial advisor, investment analyst, portfolio manager, trader, or in another professional investment role?",[{t:"Yes",v:"yes"},{t:"No",v:"no"}])+
+  radioQ("elig_device","What device are you using right now?",[{t:"Desktop / laptop",v:"desktop"},{t:"Tablet",v:"tablet"},{t:"Phone",v:"phone"},{t:"Other",v:"other"}])+
+  radioQ("elig_english","Are you fluent in English?",[{t:"Yes",v:"yes"},{t:"No",v:"no"}])+
+  '<button class="btn" onclick="checkElig()">Continue</button></div>');
+}
+function checkElig(){
+  if(!requireAll(["elig_invest","elig_exp","elig_prof","elig_device","elig_english"]))return;
+  D.elig_invest=getRadio("elig_invest"); D.elig_exp=getRadio("elig_exp");
+  D.elig_prof=getRadio("elig_prof"); D.elig_device=getRadio("elig_device"); D.elig_english=getRadio("elig_english");
+  const ok = D.elig_invest==="yes" && D.elig_prof==="no" && D.elig_device==="desktop" && D.elig_english==="yes" && D.elig_exp!=="professional";
+  if(!ok && !DEMO){
+    screenHTML('<div class="card"><h2>Thank you for your interest</h2><p>Based on your answers, this study is not a match for your profile or device this time. Please <strong>return your submission on Prolific</strong> so you are not penalized. Thank you for your time.</p></div>');
+    return;
+  }
+  sBaseline();
+}
+
+/* ---------- 3. Baseline questionnaire ---------- */
+function sBaseline(){
+  setProg(3,STEPS_TOTAL,"Background questions");
+  screenHTML('<div class="card"><h2>Background questions</h2>'+
+  radioQ("age_band","Your age band:",[{t:"18–24"},{t:"25–34"},{t:"35–44"},{t:"45–54"},{t:"55–64"},{t:"65+"}].map(function(o){return{t:o.t,v:o.t};}))+
+  radioQ("gender","Gender:",[{t:"Woman",v:"woman"},{t:"Man",v:"man"},{t:"Non-binary / another identity",v:"other"},{t:"Prefer not to say",v:"pnts"}])+
+  radioQ("education","Highest completed education:",[{t:"High school or less",v:"hs"},{t:"Some college",v:"somecoll"},{t:"Bachelor’s degree",v:"ba"},{t:"Graduate degree",v:"grad"}])+
+  '<div class="q"><p class="stem">How would you rate your willingness to take financial risk in general? (1 = very low, 7 = very high)</p>'+likert("risk_tol",1,7,"very low","very high")+'</div>'+
+  '<div class="q"><p class="stem">How often do you use AI chatbots (for example ChatGPT, Gemini, Claude)?</p>'+likert("ai_freq",1,7,"never","daily")+'</div>'+
+  radioQ("ai_finance","Have you ever used an AI tool for a money or investing question?",[{t:"Yes",v:"yes"},{t:"No",v:"no"}])+
+  '<div class="q"><p class="stem">How well do you feel you understand the limitations of AI systems? (1 = not at all, 7 = very well)</p>'+likert("ai_underst",1,7,"not at all","very well")+'</div>'+
+  '<h3>Three quick finance questions</h3><p class="small">Please answer without looking anything up.</p>'+
+  radioQ("fl1","Suppose you had $100 in a savings account and the interest rate was 2% per year. After 5 years, how much do you think you would have in the account if you left the money to grow?",[{t:"More than $102",v:"more"},{t:"Exactly $102",v:"exact"},{t:"Less than $102",v:"less"},{t:"Do not know",v:"dk"}])+
+  radioQ("fl2","Imagine that the interest rate on your savings account was 1% per year and inflation was 2% per year. After 1 year, how much would you be able to buy with the money in this account?",[{t:"More than today",v:"more"},{t:"Exactly the same",v:"same"},{t:"Less than today",v:"less"},{t:"Do not know",v:"dk"}])+
+  radioQ("fl3","Please tell me whether this statement is true or false: “Buying a single company’s stock usually provides a safer return than a stock mutual fund.”",[{t:"True",v:"true"},{t:"False",v:"false"},{t:"Do not know",v:"dk"}])+
+  '<button class="btn" onclick="saveBaseline()">Continue</button></div>');
+}
+function saveBaseline(){
+  const req=["age_band","gender","education","risk_tol","ai_freq","ai_finance","ai_underst","fl1","fl2","fl3"];
+  if(!requireAll(req))return;
+  req.forEach(function(n){D[n]=getRadio(n);});
+  D.finlit_score = (D.fl1==="more"?1:0)+(D.fl2==="less"?1:0)+(D.fl3==="false"?1:0);
+  sTutorial();
+}
+
+/* ---------- 4. Tutorial + practice + comprehension ---------- */
+function sTutorial(){
+  setProg(4,STEPS_TOTAL,"Tutorial");
+  screenHTML('<div class="card"><h2>Tutorial</h2>'+
+  '<p>You will now review <strong>six hypothetical investment cases</strong>. Each case describes a fictional investor profile, a market context, and a recommendation from <strong>AlloAssist</strong>, a simulated AI investment assistant. Your job is to decide whether the recommendation fits the investor.</p>'+
+  '<p>You may accept the AI recommendation, or reject or modify it. Please think about the investor’s <strong>time horizon, risk tolerance, goal, diversification, and concentration risk</strong>. Do not search online during the cases.</p>'+
+  '<p>All cases are hypothetical. No real money is involved, and the AI recommendations are scripted for research — the assistant is not generating live advice.</p>'+
+  '<h3>Practice: try the allocation sliders</h3>'+
+  '<p class="small">A fictional investor has a 10-year horizon and moderate risk tolerance. AlloAssist recommends a diversified mix of equity and bonds. Practice moving the sliders so the total equals 100%.</p>'+
+  sliderBlock("prac",{global:40,intl_em:20,sector:0,bonds:40,crypto:0})+
+  '<button class="btn" onclick="checkPractice()">Continue</button></div>');
+  updTotal("prac");
+}
+function checkPractice(){
+  if(!readAlloc("prac")){alert("Please adjust the sliders so the total equals exactly 100%.");return;}
+  sComprehension();
+}
+function sComprehension(){
+  setProg(5,STEPS_TOTAL,"Quick check");
+  screenHTML('<div class="card"><h2>Three quick questions about the task</h2>'+
+  radioQ("comp1","Is any real money invested in this study?",[{t:"Yes",v:"yes"},{t:"No — all cases are hypothetical",v:"no"}])+
+  radioQ("comp2","Where do the AI recommendations come from?",[{t:"A live AI generating advice in real time",v:"live"},{t:"Scripted recommendations prepared for research",v:"scripted"},{t:"A licensed human financial advisor",v:"human"}])+
+  radioQ("comp3","What is your task in each case?",[{t:"Pick the investments with the highest past returns",v:"returns"},{t:"Decide whether the AI recommendation fits the investor profile",v:"fit"},{t:"Guess what other participants chose",v:"guess"}])+
+  '<button class="btn" onclick="checkComp()">Continue</button></div>');
+}
+function checkComp(){
+  if(!requireAll(["comp1","comp2","comp3"]))return;
+  D.comp1=getRadio("comp1");D.comp2=getRadio("comp2");D.comp3=getRadio("comp3");
+  D.comp_fails=(D.comp1!=="no"?1:0)+(D.comp2!=="scripted"?1:0)+(D.comp3!=="fit"?1:0);
+  assignArm();
+}
+
+/* ---------- 5. Randomization ---------- */
+function assignArm(){
+  let arm;
+  if(["A","B","C"].includes(ARM_OVERRIDE)) arm=ARM_OVERRIDE;
+  else arm=["A","B","C"][Math.floor(Math.random()*3)];
+  D.condition = arm==="A"?"baseline":arm==="B"?"uncertainty":"full";
+  order = shuffle([0,1,2,3,4,5]);
+  D.scenario_order = order.map(function(i){return SCENARIOS[i].id;}).join("|");
+  tIdx=0;
+  sScenarioIntro();
+}
+</script>
+<script>
+"use strict";
+/* ---------- 6. Scenario flow ---------- */
+function curScen(){return SCENARIOS[order[tIdx]];}
+function sScenarioIntro(){
+  const s=curScen();
+  setProg(6,STEPS_TOTAL,"Case "+(tIdx+1)+" of 6");
+  t0=Date.now();
+  screenHTML('<div class="card"><span class="badge">Case '+(tIdx+1)+' of 6</span>'+
+  '<h2>Investor profile</h2><div class="profilebox">'+s.profile+'</div>'+
+  '<h3>Market context</h3><div class="profilebox">'+s.context+'</div>'+
+  '<h3>Step 1 — Your initial allocation</h3>'+
+  '<p class="small">Before seeing the AI recommendation, set the allocation <em>you</em> would choose for this investor. Total must equal 100%.</p>'+
+  sliderBlock("init")+
+  '<button class="btn" onclick="saveInitial()">See the AI recommendation</button></div>');
+  updTotal("init");
+}
+function saveInitial(){
+  const a=readAlloc("init");
+  if(!a){alert("Please make the total exactly 100% before continuing.");return;}
+  const s=curScen();
+  TRIALS[tIdx]={scenario_id:s.id, scenario_order:tIdx+1, advice_quality:s.quality, market_regime:s.regime,
+    initial_alloc:a, ai_alloc:s.alloc, t_initial_sec:Math.round((Date.now()-t0)/10)/100};
+  sAIAdvice();
+}
+function sAIAdvice(){
+  const s=curScen(); const arm=D.condition;
+  let h='<div class="card"><span class="badge">Case '+(tIdx+1)+' of 6</span>'+
+  '<div class="profilebox small"><strong>Investor:</strong> '+s.profile+'</div>'+
+  '<div class="aicard"><div class="aihdr">🤖 AlloAssist recommendation</div>';
+  if(arm!=="baseline") h+='<span class="conf '+s.conf.cls+'">Confidence: '+s.conf.label+' · '+s.conf.pct+'%</span>';
+  h+='<p><strong>Recommendation:</strong> '+s.aiText+'.</p>'+allocBars(s.alloc)+
+  '<p><strong>Rationale:</strong> '+s.rationale+'</p>';
+  if(arm!=="baseline") h+='<p class="small">This recommendation may miss some investor-specific constraints and should be reviewed carefully.</p>';
+  if(arm==="full") h+='<div class="counterfactual"><strong>How this could change:</strong> '+s.counter+'</div>';
+  h+='</div>';
+  if(arm==="full"){
+    h+='<div class="friction"><p><strong>Before deciding:</strong> write one reason this recommendation might <em>not</em> fit the investor profile (minimum '+CONFIG.MIN_FRICTION_WORDS+' words).</p>'+
+    '<textarea id="frictionText" placeholder="One reason this might not fit..."></textarea><div class="warn" id="frictionWarn">Please write at least '+CONFIG.MIN_FRICTION_WORDS+' words.</div></div>';
+  }
+  h+='<h3>Step 2 — Your decision</h3>'+
+  radioQ("action","What do you want to do with this recommendation?",[
+    {t:"Accept the AI recommendation as final",v:"accept"},
+    {t:"Modify the AI recommendation",v:"modify"},
+    {t:"Reject it and submit my own allocation",v:"reject"}])+
+  '<button class="btn" onclick="saveAction()">Continue</button></div>';
+  screenHTML(h);
+  TRIALS[tIdx].t_ai_shown=Date.now();
+}
+function wordCount(s){return (s||"").trim().split(/\s+/).filter(Boolean).length;}
+function saveAction(){
+  const act=getRadio("action");
+  if(!act){alert("Please choose what to do with the recommendation.");return;}
+  const T=TRIALS[tIdx];
+  if(D.condition==="full"){
+    const txt=el("frictionText").value;
+    if(wordCount(txt)<CONFIG.MIN_FRICTION_WORDS && !DEMO){el("frictionWarn").style.display="block";return;}
+    T.friction_text=txt.replace(/[\r\n,]+/g," ").slice(0,600);
+    T.friction_words=wordCount(txt);
+  }
+  T.action=act; T.accept_ai = act==="accept"?1:0;
+  if(act==="accept"){ T.final_alloc = Object.assign({},curScen().alloc); sPerCase(); }
+  else sFinalAlloc(act);
+}
+function sFinalAlloc(act){
+  const s=curScen(); const T=TRIALS[tIdx];
+  const start = act==="modify" ? s.alloc : T.initial_alloc;
+  screenHTML('<div class="card"><span class="badge">Case '+(tIdx+1)+' of 6</span>'+
+  '<h3>Step 3 — Your final allocation</h3>'+
+  '<p class="small">'+(act==="modify"?"Sliders start at the AI recommendation. Adjust as you see fit.":"Sliders start at your initial allocation. Adjust as you see fit.")+' Total must equal 100%.</p>'+
+  sliderBlock("fin",start)+
+  '<button class="btn" onclick="saveFinal()">Continue</button></div>');
+  updTotal("fin");
+}
+function saveFinal(){
+  const a=readAlloc("fin");
+  if(!a){alert("Please make the total exactly 100%.");return;}
+  TRIALS[tIdx].final_alloc=a; sPerCase();
+}
+function sPerCase(){
+  const isAttn = tIdx===3; // instructed-response item embedded in 4th case
+  screenHTML('<div class="card"><span class="badge">Case '+(tIdx+1)+' of 6</span><h3>A few ratings about this case</h3>'+
+  '<div class="q"><p class="stem">How confident are you in your decision?</p>'+likert("pc_conf",1,7,"not confident","very confident")+'</div>'+
+  '<div class="q"><p class="stem">I trust this recommendation for the investor profile.</p>'+likert("pc_trust1",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The recommendation seems competent.</p>'+likert("pc_trust2",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The recommendation seems reliable.</p>'+likert("pc_trust3",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">I would want more information before relying on it.</p>'+likert("pc_trust4r",1,7,"strongly disagree","strongly agree")+'</div>'+
+  (isAttn?'<div class="q"><p class="stem">To show you are reading carefully, please select 2 for this item.</p>'+likert("attn",1,7,"","")+'</div>':'')+
+  '<div class="q"><p class="stem">Following this recommendation would expose the investor to substantial financial risk.</p>'+likert("pc_risk1",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The recommendation seems too concentrated for the investor profile.</p>'+likert("pc_risk2",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">Optional: why did you make this decision?</p><textarea id="pc_expl" placeholder="(optional)"></textarea></div>'+
+  '<button class="btn" onclick="savePerCase()">Continue</button></div>');
+}
+function savePerCase(){
+  const req=["pc_conf","pc_trust1","pc_trust2","pc_trust3","pc_trust4r","pc_risk1","pc_risk2"];
+  if(tIdx===3) req.push("attn");
+  if(!requireAll(req))return;
+  const T=TRIALS[tIdx];
+  req.forEach(function(n){T[n]=parseInt(getRadio(n),10);});
+  if(tIdx===3){D.attention_check = T.attn===2?1:0; delete T.attn;}
+  T.explanation=(el("pc_expl").value||"").replace(/[\r\n,]+/g," ").slice(0,400);
+  T.time_scenario_sec=Math.round((Date.now()-t0)/10)/100;
+  T.appropriate_reliance = T.accept_ai===T.advice_quality?1:0;
+  tIdx++;
+  if(tIdx<6) sScenarioIntro(); else sPostTask();
+}
+
+/* ---------- 7. Post-task battery ---------- */
+function sPostTask(){
+  setProg(9,STEPS_TOTAL,"Final questionnaires (1 of 2)");
+  screenHTML('<div class="card"><h2>About the interface you used</h2>'+
+  '<div class="q"><p class="stem">I understood why the AI made its recommendations.</p>'+likert("tr1",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The interface made the AI’s limitations clear.</p>'+likert("tr2",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">I could tell when a recommendation required caution.</p>'+likert("tr3",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<h3>Workload</h3>'+
+  '<div class="q"><p class="stem">Mental demand of the task</p>'+likert("wl1",1,7,"very low","very high")+'</div>'+
+  '<div class="q"><p class="stem">Effort required</p>'+likert("wl2",1,7,"very low","very high")+'</div>'+
+  '<div class="q"><p class="stem">Time pressure felt</p>'+likert("wl3",1,7,"very low","very high")+'</div>'+
+  '<div class="q"><p class="stem">Frustration experienced</p>'+likert("wl4",1,7,"very low","very high")+'</div>'+
+  '<div class="q"><p class="stem">Overall task difficulty</p>'+likert("wl5",1,7,"very low","very high")+'</div>'+
+  '<h3>Usability</h3>'+
+  '<div class="q"><p class="stem">The interface was easy to use.</p>'+likert("us1",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The study flow was clear.</p>'+likert("us2",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">The decision controls were understandable.</p>'+likert("us3",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">I could easily compare the investor profile with the AI advice.</p>'+likert("us4",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<div class="q"><p class="stem">I would not need technical help to use this prototype.</p>'+likert("us5",1,7,"strongly disagree","strongly agree")+'</div>'+
+  '<button class="btn" onclick="savePost1()">Continue</button></div>');
+}
+function savePost1(){
+  const req=["tr1","tr2","tr3","wl1","wl2","wl3","wl4","wl5","us1","us2","us3","us4","us5"];
+  if(!requireAll(req))return;
+  req.forEach(function(n){D[n]=parseInt(getRadio(n),10);});
+  sCRT();
+}
+function sCRT(){
+  setProg(10,STEPS_TOTAL,"Final questionnaires (2 of 2)");
+  screenHTML('<div class="card"><h2>Three short puzzles</h2><p class="small">Answer with a number. Please do not look anything up.</p>'+
+  '<div class="q"><p class="stem">A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost? (in cents)</p><input type="number" id="crt1" style="width:120px;padding:8px"> cents</div>'+
+  '<div class="q"><p class="stem">If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets? (in minutes)</p><input type="number" id="crt2" style="width:120px;padding:8px"> minutes</div>'+
+  '<div class="q"><p class="stem">In a lake there is a patch of lily pads. Every day the patch doubles in size. If it takes 48 days for the patch to cover the entire lake, how long would it take to cover half the lake? (in days)</p><input type="number" id="crt3" style="width:120px;padding:8px"> days</div>'+
+  '<h3>Two questions about the study itself</h3>'+
+  radioQ("mc_unc","Did the AI assistant show a confidence or uncertainty cue?",[{t:"Yes",v:"yes"},{t:"No",v:"no"},{t:"I do not remember",v:"dr"}])+
+  radioQ("mc_int","If a confidence cue was shown, what did it refer to?",[{t:"How certain the AI was about its recommendation",v:"ai_certainty"},{t:"The expected market return",v:"return"},{t:"The investor’s risk tolerance",v:"risktol"},{t:"Not sure / no cue shown",v:"ns"}])+
+  radioQ("mc_fric","Did the interface ask you to write why a recommendation might not fit?",[{t:"Yes",v:"yes"},{t:"No",v:"no"},{t:"I do not remember",v:"dr"}])+
+  radioQ("mc_cf","Did the interface explain how the recommendation would change under a different investor profile?",[{t:"Yes",v:"yes"},{t:"No",v:"no"},{t:"I do not remember",v:"dr"}])+
+  radioQ("interview","Would you be open to a short follow-up interview (20–30 min, separately paid, contacted via Prolific)?",[{t:"Yes, you may invite me",v:"yes"},{t:"No, thank you",v:"no"}])+
+  '<button class="btn" onclick="saveCRT()">Finish</button></div>');
+}
+function saveCRT(){
+  if(!requireAll(["mc_unc","mc_int","mc_fric","mc_cf","interview"]))return;
+  const c1=parseFloat(el("crt1").value), c2=parseFloat(el("crt2").value), c3=parseFloat(el("crt3").value);
+  if([c1,c2,c3].some(function(x){return isNaN(x);})&&!DEMO){alert("Please answer the three puzzles with numbers.");return;}
+  D.crt1=c1;D.crt2=c2;D.crt3=c3;
+  D.crt_score=(c1===5?1:0)+(c2===5?1:0)+(c3===47?1:0);
+  ["mc_unc","mc_int","mc_fric","mc_cf","interview"].forEach(function(n){D[n]=getRadio(n);});
+  D.finished_utc=new Date().toISOString();
+  sUploadAndDebrief();
+}
+
+/* ---------- 8. Data assembly + upload + debrief ---------- */
+function buildCSV(){
+  const pCols=["participant_id","study_id","session_id","version","condition","scenario_order","consent","started_utc","finished_utc",
+   "elig_invest","elig_exp","elig_prof","elig_device","elig_english","age_band","gender","education","risk_tol","ai_freq","ai_finance","ai_underst",
+   "fl1","fl2","fl3","finlit_score","comp1","comp2","comp3","comp_fails","attention_check",
+   "tr1","tr2","tr3","wl1","wl2","wl3","wl4","wl5","us1","us2","us3","us4","us5",
+   "crt1","crt2","crt3","crt_score","mc_unc","mc_int","mc_fric","mc_cf","interview","screen_w","screen_h","user_agent"];
+  const tCols=["scenario_id","scenario_order","advice_quality","market_regime","action","accept_ai","appropriate_reliance",
+   "pc_conf","pc_trust1","pc_trust2","pc_trust3","pc_trust4r","pc_risk1","pc_risk2","friction_text","friction_words","explanation","time_scenario_sec"];
+  const aCols=[];
+  ASSETS.forEach(function(a){aCols.push("initial_"+a.key,"ai_"+a.key,"final_"+a.key);});
+  const header=pCols.concat(tCols,aCols).join(",");
+  const esc=function(v){v=(v===undefined||v===null)?"":String(v);return /[",]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v;};
+  const rows=TRIALS.map(function(T){
+    const p=pCols.map(function(c){return esc(D[c]);});
+    const t=tCols.map(function(c){return esc(T[c]);});
+    const al=[];
+    ASSETS.forEach(function(a){
+      al.push(esc((T.initial_alloc||{})[a.key]), esc((T.ai_alloc||{})[a.key]), esc((T.final_alloc||{})[a.key]));
+    });
+    return p.concat(t,al).join(",");
+  });
+  return header+"\n"+rows.join("\n");
+}
+async function uploadData(csv){
+  const filename = "trustcal_"+D.condition+"_"+PID+"_"+Date.now()+".csv";
+  const res = await fetch("https://pipe.jspsych.org/api/data/",{
+    method:"POST", headers:{"Content-Type":"application/json",Accept:"*/*"},
+    body:JSON.stringify({experimentID:CONFIG.DATAPIPE_EXPERIMENT_ID, filename:filename, data:csv})
+  });
+  if(!res.ok) throw new Error("DataPipe returned "+res.status);
+  return filename;
+}
+function downloadCSV(csv){
+  const blob=new Blob([csv],{type:"text/csv"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);
+  a.download="trustcal_"+PID+".csv";a.click();
+}
+async function sUploadAndDebrief(){
+  setProg(12,STEPS_TOTAL,"Saving your responses");
+  screenHTML('<div class="card"><h2>Saving your responses…</h2><p>Please wait a moment. Do not close this window.</p></div>');
+  const csv=buildCSV(); let saved=false, tries=0;
+  while(!saved && tries<3){
+    tries++;
+    try{ await uploadData(csv); saved=true; }
+    catch(e){ await new Promise(function(r){setTimeout(r,1500*tries);}); }
+  }
+  sDebrief(saved,csv);
+}
+function sDebrief(saved,csv){
+  setProg(13,STEPS_TOTAL,"Done");
+  let h='<div class="card"><h2>Thank you for participating</h2>'+
+  '<p>This study examined how people respond to AI-generated investment recommendations and whether interface design can help users rely on AI advice more appropriately. All investor profiles and recommendations were <strong>simulated for research</strong>. The AI assistant did not generate live advice during the study.</p>'+
+  '<p>Some recommendations were intentionally designed to be more suitable for the investor profile, while others were intentionally designed to be less suitable, so the study could measure whether participants accepted strong advice and rejected weak advice.</p>'+
+  '<p><strong>This study does not provide financial advice.</strong> Please do not use any recommendation from the study to make real investment decisions. If you have questions about your own investments, consult a qualified financial professional.</p>'+
+  '<p class="small">Questions about the study: '+CONFIG.RESEARCHER_EMAIL+'</p>';
+  if(!saved){
+    h+='<div class="friction"><p><strong>We could not reach the data server.</strong> Please click the button below to download your data file, then message the researcher on Prolific and attach it. You will still be paid.</p>'+
+    '<button class="btn secondary" onclick="downloadCSVFromStore()">Download my data file</button></div>';
+    window.__csv=csv;
+  }
+  h+='<p>Click below to return to Prolific and register your completion.</p>'+
+  '<p><a class="btn" style="text-decoration:none;display:inline-block" href="'+CONFIG.PROLIFIC_RETURN_URL+CONFIG.PROLIFIC_COMPLETION_CODE+'">Complete study on Prolific</a></p>'+
+  '<p class="small">Completion code (if the button does not work): <code class="cc">'+CONFIG.PROLIFIC_COMPLETION_CODE+'</code></p></div>';
+  screenHTML(h);
+}
+function downloadCSVFromStore(){downloadCSV(window.__csv);}
+
+/* ---------- boot ---------- */
+(function(){
+  const mobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)||window.innerWidth<820;
+  if(mobile&&!DEMO){el("blocker").style.display="block";return;}
+  sConsent();
+})();
+/* ---------- self test (node) ---------- */
+if(typeof module!=="undefined"){module.exports={buildCSV:buildCSV,wordCount:wordCount,SCENARIOS:SCENARIOS,ASSETS:ASSETS,D:D,TRIALS:TRIALS};}
+</script>
+</body>
+</html>
