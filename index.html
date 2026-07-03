@@ -72,13 +72,14 @@ const CONFIG = {
   PROLIFIC_RETURN_URL: "https://app.prolific.com/submissions/complete?cc=",
   RESEARCHER_EMAIL: "austinydes@gmail.com",
   MIN_FRICTION_WORDS: 10,
-  VERSION: "3arm-n100-6cases-v1.0"
+  VERSION: "3arm-n100-6cases-v1.1"
 };
 /* =================================================================== */
 const qs = new URLSearchParams(location.search);
-const DEMO = qs.get("demo")==="1";
-const ARM_OVERRIDE = (qs.get("arm")||"").toUpperCase();
 const PID = qs.get("PROLIFIC_PID") || ("test_"+Math.random().toString(36).slice(2,10));
+const IS_TEST = !qs.get("PROLIFIC_PID") || /^(test_|ux_|e2e_)/i.test(PID);
+const DEMO = qs.get("demo")==="1" && IS_TEST;
+const ARM_OVERRIDE = IS_TEST ? (qs.get("arm")||"").toUpperCase() : "";
 const STUDY_ID = qs.get("STUDY_ID")||""; const SESSION_ID = qs.get("SESSION_ID")||"";
 
 const ASSETS = [
@@ -150,6 +151,7 @@ const TRIALS = [];   // per-scenario records
 let order = [];      // shuffled scenario indices
 let tIdx = 0;        // current trial
 let t0 = 0;          // timers
+const COUNTS = {init:0, fin:0};   // slider interaction counters
 function shuffle(a){const b=a.slice();for(let i=b.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[b[i],b[j]]=[b[j],b[i]];}return b;}
 function el(id){return document.getElementById(id);}
 function screenHTML(h){el("screen").innerHTML=h;window.scrollTo(0,0);}
@@ -197,6 +199,7 @@ function sliderBlock(prefix, init){
   return h;
 }
 function updTotal(prefix){
+  if(COUNTS[prefix]!==undefined) COUNTS[prefix]++;
   let sum=0;
   ASSETS.forEach(function(a){
     const s=el(prefix+"_"+a.key); const v=parseInt(s.value,10);
@@ -298,7 +301,7 @@ function sTutorial(){
   '<p>All cases are hypothetical. No real money is involved, and the AI recommendations are scripted for research — the assistant is not generating live advice.</p>'+
   '<h3>Practice: try the allocation sliders</h3>'+
   '<p class="small">A fictional investor has a 10-year horizon and moderate risk tolerance. AlloAssist recommends a diversified mix of equity and bonds. Practice moving the sliders so the total equals 100%.</p>'+
-  sliderBlock("prac",{global:40,intl_em:20,sector:0,bonds:40,crypto:0})+
+  sliderBlock("prac",{global:40,intl_em:20,sector:0,bonds:30,crypto:0})+
   '<button class="btn" onclick="checkPractice()">Continue</button></div>');
   updTotal("prac");
 }
@@ -314,22 +317,57 @@ function sComprehension(){
   radioQ("comp3","What is your task in each case?",[{t:"Pick the investments with the highest past returns",v:"returns"},{t:"Decide whether the AI recommendation fits the investor profile",v:"fit"},{t:"Guess what other participants chose",v:"guess"}])+
   '<button class="btn" onclick="checkComp()">Continue</button></div>');
 }
+let compAttempt = 1;
 function checkComp(){
   if(!requireAll(["comp1","comp2","comp3"]))return;
   D.comp1=getRadio("comp1");D.comp2=getRadio("comp2");D.comp3=getRadio("comp3");
-  D.comp_fails=(D.comp1!=="no"?1:0)+(D.comp2!=="scripted"?1:0)+(D.comp3!=="fit"?1:0);
+  const fails=(D.comp1!=="no"?1:0)+(D.comp2!=="scripted"?1:0)+(D.comp3!=="fit"?1:0);
+  if(compAttempt===1){ D.comp_fails_first=fails; }
+  if(fails>0 && compAttempt===1){
+    compAttempt=2;
+    screenHTML('<div class="card"><h2>Please review the task description</h2>'+
+    '<p>At least one of your answers did not match the task description. As a reminder: all cases are <strong>hypothetical</strong> and no real money is involved; the AI recommendations are <strong>scripted for research</strong>; and your task is to decide whether each recommendation <strong>fits the investor profile</strong>.</p>'+
+    '<button class="btn" onclick="sComprehension()">Answer the questions again</button></div>');
+    return;
+  }
+  D.comp_fails=fails; D.comp_attempts=compAttempt;
   assignArm();
 }
 
 /* ---------- 5. Randomization ---------- */
-function assignArm(){
+function saveState(stage){
+  try{ sessionStorage.setItem("tc_state", JSON.stringify({pid:PID,stage:stage,D:D,TRIALS:TRIALS,order:order,tIdx:tIdx})); }catch(e){}
+}
+function clearState(){ try{ sessionStorage.removeItem("tc_state"); }catch(e){} }
+async function getBalancedArm(){
+  try{
+    const r=await fetch("https://pipe.jspsych.org/api/condition/",{method:"POST",
+      headers:{"Content-Type":"application/json",Accept:"*/*"},
+      body:JSON.stringify({experimentID:CONFIG.DATAPIPE_EXPERIMENT_ID})});
+    if(r.ok){ const j=await r.json();
+      if(typeof j.condition==="number"){ D.assign_method="server_balanced"; return ["A","B","C"][j.condition%3]; } }
+  }catch(e){}
+  D.assign_method="random_fallback";
+  return ["A","B","C"][Math.floor(Math.random()*3)];
+}
+async function assignArm(){
   let arm;
-  if(["A","B","C"].includes(ARM_OVERRIDE)) arm=ARM_OVERRIDE;
-  else arm=["A","B","C"][Math.floor(Math.random()*3)];
+  if(["A","B","C"].includes(ARM_OVERRIDE)){ arm=ARM_OVERRIDE; D.assign_method="url_override_test"; }
+  else arm = await getBalancedArm();
   D.condition = arm==="A"?"baseline":arm==="B"?"uncertainty":"full";
   order = shuffle([0,1,2,3,4,5]);
   D.scenario_order = order.map(function(i){return SCENARIOS[i].id;}).join("|");
   tIdx=0;
+  // checkpoint record: makes per-arm attrition measurable even if the participant never finishes
+  try{
+    fetch("https://pipe.jspsych.org/api/data/",{method:"POST",headers:{"Content-Type":"application/json",Accept:"*/*"},
+      body:JSON.stringify({experimentID:CONFIG.DATAPIPE_EXPERIMENT_ID,
+        filename:"checkpoint_"+PID+"_"+Date.now()+".csv",
+        data:"participant_id,condition,assign_method,scenario_order,stage,timestamp_utc\n"+
+             [PID,D.condition,D.assign_method,D.scenario_order,"randomized",new Date().toISOString()].join(",")})
+    }).catch(function(){});
+  }catch(e){}
+  saveState("case");
   sScenarioIntro();
 }
 </script>
@@ -348,6 +386,7 @@ function sScenarioIntro(){
   '<p class="small">Before seeing the AI recommendation, set the allocation <em>you</em> would choose for this investor. Total must equal 100%.</p>'+
   sliderBlock("init")+
   '<button class="btn" onclick="saveInitial()">See the AI recommendation</button></div>');
+  COUNTS.init=-1; COUNTS.fin=0;
   updTotal("init");
 }
 function saveInitial(){
@@ -364,7 +403,7 @@ function sAIAdvice(){
   '<div class="profilebox small"><strong>Investor:</strong> '+s.profile+'</div>'+
   '<div class="aicard"><div class="aihdr">🤖 AlloAssist recommendation</div>';
   if(arm!=="baseline") h+='<span class="conf '+s.conf.cls+'">Confidence: '+s.conf.label+' · '+s.conf.pct+'%</span>';
-  h+='<p><strong>Recommendation:</strong> '+s.aiText+'.</p>'+allocBars(s.alloc)+
+  h+='<p><strong>Recommendation:</strong> '+s.aiText+'.</p><p class="small">Shown grouped into the five asset classes used in this study:</p>'+allocBars(s.alloc)+
   '<p><strong>Rationale:</strong> '+s.rationale+'</p>';
   if(arm!=="baseline") h+='<p class="small">This recommendation may miss some investor-specific constraints and should be reviewed carefully.</p>';
   if(arm==="full") h+='<div class="counterfactual"><strong>How this could change:</strong> '+s.counter+'</div>';
@@ -394,6 +433,7 @@ function saveAction(){
     T.friction_words=wordCount(txt);
   }
   T.action=act; T.accept_ai = act==="accept"?1:0;
+  T.t_decision_sec = Math.round((Date.now()-T.t_ai_shown)/10)/100; delete T.t_ai_shown;
   if(act==="accept"){ T.final_alloc = Object.assign({},curScen().alloc); sPerCase(); }
   else sFinalAlloc(act);
 }
@@ -405,6 +445,7 @@ function sFinalAlloc(act){
   '<p class="small">'+(act==="modify"?"Sliders start at the AI recommendation. Adjust as you see fit.":"Sliders start at your initial allocation. Adjust as you see fit.")+' Total must equal 100%.</p>'+
   sliderBlock("fin",start)+
   '<button class="btn" onclick="saveFinal()">Continue</button></div>');
+  COUNTS.fin=-1;
   updTotal("fin");
 }
 function saveFinal(){
@@ -436,7 +477,9 @@ function savePerCase(){
   T.explanation=(el("pc_expl").value||"").replace(/[\r\n,]+/g," ").slice(0,400);
   T.time_scenario_sec=Math.round((Date.now()-t0)/10)/100;
   T.appropriate_reliance = T.accept_ai===T.advice_quality?1:0;
+  T.n_slider_init=Math.max(COUNTS.init,0); T.n_slider_fin=Math.max(COUNTS.fin,0);
   tIdx++;
+  saveState(tIdx<6 ? "case" : "posttask");
   if(tIdx<6) sScenarioIntro(); else sPostTask();
 }
 
@@ -465,14 +508,15 @@ function savePost1(){
   const req=["tr1","tr2","tr3","wl1","wl2","wl3","wl4","wl5","us1","us2","us3","us4","us5"];
   if(!requireAll(req))return;
   req.forEach(function(n){D[n]=parseInt(getRadio(n),10);});
+  saveState("crt");
   sCRT();
 }
 function sCRT(){
   setProg(10,STEPS_TOTAL,"Final questionnaires (2 of 2)");
   screenHTML('<div class="card"><h2>Three short puzzles</h2><p class="small">Answer with a number. Please do not look anything up.</p>'+
-  '<div class="q"><p class="stem">A bat and a ball cost $1.10 in total. The bat costs $1.00 more than the ball. How much does the ball cost? (in cents)</p><input type="number" id="crt1" style="width:120px;padding:8px"> cents</div>'+
-  '<div class="q"><p class="stem">If it takes 5 machines 5 minutes to make 5 widgets, how long would it take 100 machines to make 100 widgets? (in minutes)</p><input type="number" id="crt2" style="width:120px;padding:8px"> minutes</div>'+
-  '<div class="q"><p class="stem">In a lake there is a patch of lily pads. Every day the patch doubles in size. If it takes 48 days for the patch to cover the entire lake, how long would it take to cover half the lake? (in days)</p><input type="number" id="crt3" style="width:120px;padding:8px"> days</div>'+
+  '<div class="q"><p class="stem">A farmer had 15 sheep and all but 8 died. How many are left?</p><input type="number" id="crt1" style="width:120px;padding:8px"> sheep</div>'+
+  '<div class="q"><p class="stem">How many cubic feet of dirt are there in a hole that is 3 feet deep, 3 feet wide, and 3 feet long?</p><input type="number" id="crt2" style="width:120px;padding:8px"> cubic feet</div>'+
+  radioQ("crt3","If you are running a race and you pass the person in second place, what place are you in?",[{t:"First place",v:"first"},{t:"Second place",v:"second"},{t:"Third place",v:"third"},{t:"Last place",v:"last"}])+
   '<h3>Two questions about the study itself</h3>'+
   radioQ("mc_unc","Did the AI assistant show a confidence or uncertainty cue?",[{t:"Yes",v:"yes"},{t:"No",v:"no"},{t:"I do not remember",v:"dr"}])+
   radioQ("mc_int","If a confidence cue was shown, what did it refer to?",[{t:"How certain the AI was about its recommendation",v:"ai_certainty"},{t:"The expected market return",v:"return"},{t:"The investor’s risk tolerance",v:"risktol"},{t:"Not sure / no cue shown",v:"ns"}])+
@@ -482,11 +526,11 @@ function sCRT(){
   '<button class="btn" onclick="saveCRT()">Finish</button></div>');
 }
 function saveCRT(){
-  if(!requireAll(["mc_unc","mc_int","mc_fric","mc_cf","interview"]))return;
-  const c1=parseFloat(el("crt1").value), c2=parseFloat(el("crt2").value), c3=parseFloat(el("crt3").value);
-  if([c1,c2,c3].some(function(x){return isNaN(x);})&&!DEMO){alert("Please answer the three puzzles with numbers.");return;}
+  if(!requireAll(["crt3","mc_unc","mc_int","mc_fric","mc_cf","interview"]))return;
+  const c1=parseFloat(el("crt1").value), c2=parseFloat(el("crt2").value), c3=getRadio("crt3");
+  if([c1,c2].some(function(x){return isNaN(x);})&&!DEMO){alert("Please answer the two number puzzles.");return;}
   D.crt1=c1;D.crt2=c2;D.crt3=c3;
-  D.crt_score=(c1===5?1:0)+(c2===5?1:0)+(c3===47?1:0);
+  D.crt_score=(c1===8?1:0)+(c2===0?1:0)+(c3==="second"?1:0);
   ["mc_unc","mc_int","mc_fric","mc_cf","interview"].forEach(function(n){D[n]=getRadio(n);});
   D.finished_utc=new Date().toISOString();
   sUploadAndDebrief();
@@ -496,11 +540,11 @@ function saveCRT(){
 function buildCSV(){
   const pCols=["participant_id","study_id","session_id","version","condition","scenario_order","consent","started_utc","finished_utc",
    "elig_invest","elig_exp","elig_prof","elig_device","elig_english","age_band","gender","education","risk_tol","ai_freq","ai_finance","ai_underst",
-   "fl1","fl2","fl3","finlit_score","comp1","comp2","comp3","comp_fails","attention_check",
+   "fl1","fl2","fl3","finlit_score","comp1","comp2","comp3","comp_fails","comp_fails_first","comp_attempts","assign_method","attention_check",
    "tr1","tr2","tr3","wl1","wl2","wl3","wl4","wl5","us1","us2","us3","us4","us5",
    "crt1","crt2","crt3","crt_score","mc_unc","mc_int","mc_fric","mc_cf","interview","screen_w","screen_h","user_agent"];
   const tCols=["scenario_id","scenario_order","advice_quality","market_regime","action","accept_ai","appropriate_reliance",
-   "pc_conf","pc_trust1","pc_trust2","pc_trust3","pc_trust4r","pc_risk1","pc_risk2","friction_text","friction_words","explanation","time_scenario_sec"];
+   "pc_conf","pc_trust1","pc_trust2","pc_trust3","pc_trust4r","pc_risk1","pc_risk2","friction_text","friction_words","explanation","time_scenario_sec","t_initial_sec","t_decision_sec","n_slider_init","n_slider_fin"];
   const aCols=[];
   ASSETS.forEach(function(a){aCols.push("initial_"+a.key,"ai_"+a.key,"final_"+a.key);});
   const header=pCols.concat(tCols,aCols).join(",");
@@ -533,6 +577,7 @@ function downloadCSV(csv){
 async function sUploadAndDebrief(){
   setProg(12,STEPS_TOTAL,"Saving your responses");
   screenHTML('<div class="card"><h2>Saving your responses…</h2><p>Please wait a moment. Do not close this window.</p></div>');
+  clearState();
   const csv=buildCSV(); let saved=false, tries=0;
   while(!saved && tries<3){
     tries++;
@@ -561,9 +606,31 @@ function sDebrief(saved,csv){
 function downloadCSVFromStore(){downloadCSV(window.__csv);}
 
 /* ---------- boot ---------- */
+function tryResume(){
+  let s=null;
+  try{ s=JSON.parse(sessionStorage.getItem("tc_state")); }catch(e){}
+  if(!s || s.pid!==PID || !s.stage) return false;
+  screenHTML('<div class="card"><h2>Welcome back</h2>'+
+  '<p>It looks like your session was interrupted. You can continue where you left off; your earlier answers were kept.</p>'+
+  '<button class="btn" onclick="doResume()">Continue where I left off</button> '+
+  '<button class="btn secondary" onclick="clearState();location.reload()">Start over</button></div>');
+  window.__resume=s;
+  return true;
+}
+function doResume(){
+  const s=window.__resume;
+  Object.assign(D, s.D);
+  TRIALS.length=0; s.TRIALS.forEach(function(x){TRIALS.push(x);});
+  order=s.order; tIdx=s.tIdx;
+  if(s.stage==="case") sScenarioIntro();
+  else if(s.stage==="posttask") sPostTask();
+  else if(s.stage==="crt") sCRT();
+  else sConsent();
+}
 (function(){
   const mobile=/Mobi|Android|iPhone|iPad/i.test(navigator.userAgent)||window.innerWidth<820;
   if(mobile&&!DEMO){el("blocker").style.display="block";return;}
+  if(tryResume()) return;
   sConsent();
 })();
 /* ---------- self test (node) ---------- */
